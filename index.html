@@ -33,8 +33,8 @@ hr{border:0;border-top:1px solid #293b50;margin:14px 0}
   </div>
 
   <div class="card">
-    <label>1. Bëj foto të X-raportit</label>
-    <input id="photo" type="file" accept="image/*" capture="environment">
+    <label>1. Ngarko ose fotografo X-raportin</label>
+    <div class="row"><button type="button" id="galleryBtn" class="secondary">🖼️ Zgjidh foton</button><button type="button" id="cameraBtn" class="secondary">📷 Bëj foto</button></div><input id="photo" type="file" accept="image/*" style="display:none"><input id="camera" type="file" accept="image/*" capture="environment" style="display:none">
     <img id="preview" class="preview">
     <button id="ocrBtn" class="primary" style="margin-top:10px">🔍 Lexo X-raportin</button>
     <div id="status" class="status"></div>
@@ -67,7 +67,7 @@ hr{border:0;border-top:1px solid #293b50;margin:14px 0}
 </div>
 
 <script>
-const $=id=>document.getElementById(id);
+const $=id=>document.getElementById(id);\nconst photoInput=$("photo"), cameraInput=$("camera");\n$("galleryBtn").onclick=()=>photoInput.click();\n$("cameraBtn").onclick=()=>cameraInput.click();\nfunction selectFile(f){ if(!f)return; const dt=new DataTransfer(); dt.items.add(f); photoInput.files=dt.files; photoInput.dispatchEvent(new Event("change")); }\ncameraInput.addEventListener("change",()=>selectFile(cameraInput.files[0]));
 const fields=['b95','b98','diesel','market','total','date','time'];
 function nowDefaults(){
   const d=new Date(), pad=n=>String(n).padStart(2,'0');
@@ -140,7 +140,7 @@ function parseOCR(raw){
 
 $('ocrBtn').onclick=async()=>{
  const f=$('photo').files[0];
- if(!f){$('status').style.display='block';$('status').textContent='Së pari zgjidh ose bëj foton e X-raportit.';return}
+ if(!f){$('status').style.display='block';$('status').textContent='Së pari zgjidh foton që ta kanë dërguar, ose bëj një foto të re.';return}
  $('ocrBtn').disabled=true; $('status').style.display='block'; $('status').textContent='⏳ Po e lexoj raportin… kjo mund të zgjasë pak.';
  try{
    const {data}=await Tesseract.recognize(f,'eng',{logger:m=>{
