@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="sq">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>LAB OIL – Raporti Ditor</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#eef2f7;background:#08111c}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#08111c,#101b2a);min-height:100vh}
+.wrap{max-width:620px;margin:auto;padding:18px 14px 35px}.head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.logo{width:48px;height:48px;border-radius:14px;background:#d71920;display:grid;place-items:center;font-weight:900;font-size:19px;box-shadow:0 8px 24px #0006}
+h1{font-size:22px;margin:0}.sub{color:#9eacbc;font-size:13px;margin-top:3px}
+.card{background:#111d2b;border:1px solid #26364a;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 8px 25px #0004}
+label{display:block;font-size:13px;color:#aebdcd;margin:0 0 6px}
+input{width:100%;border:1px solid #34475e;background:#0b1522;color:white;border-radius:11px;padding:13px;font-size:17px;outline:none}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.full{grid-column:1/-1}
+button{width:100%;border:0;border-radius:13px;padding:14px 16px;font-weight:800;font-size:16px;cursor:pointer}
+.primary{background:#e31b23;color:#fff}.green{background:#18a957;color:#fff}.secondary{background:#243449;color:#fff}
+.small{font-size:12px;color:#94a6b8;line-height:1.45}.status{margin-top:10px;padding:10px;border-radius:10px;background:#0a1522;color:#b8c7d8;display:none}
+.preview{width:100%;max-height:280px;object-fit:contain;border-radius:12px;margin-top:10px;display:none;background:#000}
+.report{white-space:pre-wrap;background:#09131f;border:1px dashed #3a5068;border-radius:12px;padding:14px;line-height:1.55;font-size:15px}
+.row{display:flex;gap:9px}.row>*{flex:1}
+hr{border:0;border-top:1px solid #293b50;margin:14px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="logo">LO</div>
+    <div><h1>LAB OIL – Raporti Ditor</h1><div class="sub">Pika Marigone • foto → tekst → WhatsApp</div></div>
+  </div>
+
+  <div class="card">
+    <label>1. Bëj foto të X-raportit</label>
+    <input id="photo" type="file" accept="image/*" capture="environment">
+    <img id="preview" class="preview">
+    <button id="ocrBtn" class="primary" style="margin-top:10px">🔍 Lexo X-raportin</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div><label>Benzin 95 (L)</label><input id="b95" inputmode="decimal" placeholder="230.350"></div>
+      <div><label>Benzin 98 (L)</label><input id="b98" inputmode="decimal" placeholder="59.690"></div>
+      <div><label>Dizel (L)</label><input id="diesel" inputmode="decimal" placeholder="1696.720"></div>
+      <div><label>Marketi (€)</label><input id="market" inputmode="decimal" placeholder="386.60"></div>
+      <div><label>Total (€)</label><input id="total" inputmode="decimal" placeholder="3618.66"></div>
+      <div><label>Data</label><input id="date" type="date"></div>
+      <div class="full"><label>Ora e qarkullimit</label><input id="time" type="time" value="20:00"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>2. Kontrollo raportin</label>
+    <div id="report" class="report">Plotëso fushat ose bëj foto të X-raportit.</div>
+    <div class="row" style="margin-top:10px">
+      <button id="copyBtn" class="secondary">📋 Kopjo</button>
+      <button id="waBtn" class="green">🟢 WhatsApp</button>
+    </div>
+  </div>
+
+  <div class="card small">
+    <b>Shënim:</b> OCR është ndihmës dhe mund të ngatërrojë ndonjë shifër. Kontrolloji numrat para se t'ia dërgosh shefit. Nëse fotoja nuk lexohet mirë, mund t'i shkruash manualisht në fushat sipër.
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fields=['b95','b98','diesel','market','total','date','time'];
+function nowDefaults(){
+  const d=new Date(), pad=n=>String(n).padStart(2,'0');
+  $('date').value=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
+nowDefaults();
+
+function num(id){return ($(id).value||'').trim().replace(',','.')}
+function prettyDate(v){
+  if(!v)return '01.10.2026';
+  const [y,m,d]=v.split('-'); return d+'.'+m+'.'+y;
+}
+function build(){
+  const r=`Pika Marigone
+
+{Benzin95}:${num('b95')}L
+{Benzin98}:${num('b98')}L
+Dizel: ${num('diesel')}L
+
+Marketi:${num('market')}€
+Total: ${num('total')}€
+
+Qarkullimi ditor ${prettyDate($('date').value)} deri në ora ${$('time').value||'20:00'}`;
+  $('report').textContent=r; return r;
+}
+fields.forEach(id=>$(id).addEventListener('input',build));
+build();
+
+$('photo').addEventListener('change',()=>{
+ const f=$('photo').files[0]; if(!f)return;
+ $('preview').src=URL.createObjectURL(f); $('preview').style.display='block';
+ $('status').style.display='block'; $('status').textContent='Fotoja u zgjodh. Shtyp “Lexo X-raportin”.';
+});
+
+function clean(s){
+ return s.replace(/[Oo]/g,'0').replace(/[Il|]/g,'1').replace(/,/g,'.').replace(/\s+/g,' ');
+}
+function findAfter(text, key, max=180){
+ const i=text.toLowerCase().indexOf(key.toLowerCase()); return i<0?'':text.slice(i,i+max);
+}
+function decimalCandidates(s){
+ return [...s.matchAll(/\b\d{1,5}[\.,]\d{2,3}\b/g)].map(m=>m[0].replace(',','.'));
+}
+function unique(a){return [...new Set(a)]}
+function parseOCR(raw){
+ const t=clean(raw);
+ let out={b95:'',b98:'',diesel:'',market:'',total:''};
+ // Fuel liters: X-report normally lists H01=95, H02=98, H03=diesel.
+ for(const [key,id] of [['H01','b95'],['H02','b98'],['H03','diesel']]){
+   const part=findAfter(t,key);
+   const vals=decimalCandidates(part).filter(v=>parseFloat(v)>1);
+   if(vals.length) out[id]=vals[0];
+ }
+ // Fallback: search for the common litre values after the word LITRA.
+ if(!out.b95||!out.b98||!out.diesel){
+   const lits=[...t.matchAll(/LITRA[\s:\-]*([0-9]{1,5}[\.,][0-9]{2,3})/gi)].map(m=>m[1].replace(',','.'));
+   if(lits.length>=3){out.b95=out.b95||lits[0];out.b98=out.b98||lits[1];out.diesel=out.diesel||lits[2];}
+ }
+ // Market is the gross/total on the second fiscal report. Prefer values near TOTAL BRUTO after the second report.
+ const gross=[...t.matchAll(/TOTAL\s*BRUTO[^0-9]{0,40}([0-9]{2,5}[\.,][0-9]{2})/gi)].map(m=>m[1].replace(',','.'));
+ if(gross.length) out.market=gross[gross.length-1];
+ // Overall total: first report's TOTAL BRUTO / TOTAL NETO area. Usually the larger euro figure.
+ const euros=[...t.matchAll(/\b(?:[0-9]{2,5}[\.,][0-9]{2})\b/g)].map(m=>m[0].replace(',','.')).map(Number).filter(n=>n>100);
+ if(euros.length){
+   const likely=euros.filter(n=>n>1000 && n<10000);
+   if(likely.length) out.total=String(likely[0].toFixed(2));
+ }
+ return out;
+}
+
+$('ocrBtn').onclick=async()=>{
+ const f=$('photo').files[0];
+ if(!f){$('status').style.display='block';$('status').textContent='Së pari zgjidh ose bëj foton e X-raportit.';return}
+ $('ocrBtn').disabled=true; $('status').style.display='block'; $('status').textContent='⏳ Po e lexoj raportin… kjo mund të zgjasë pak.';
+ try{
+   const {data}=await Tesseract.recognize(f,'eng',{logger:m=>{
+     if(m.status==='recognizing text') $('status').textContent='⏳ Po lexoj: '+Math.round((m.progress||0)*100)+'%';
+   }});
+   const p=parseOCR(data.text);
+   Object.entries(p).forEach(([k,v])=>{if(v)$(k).value=v});
+   build();
+   $('status').textContent='✅ U lexua. Kontrolloji shifrat në fushat sipër dhe pastaj dërgoje.';
+ }catch(e){
+   $('status').textContent='❌ Nuk u lexua dot fotografia. Provo një foto më të qartë ose shkruaji numrat manualisht.';
+ }finally{$('ocrBtn').disabled=false}
+};
+
+$('copyBtn').onclick=async()=>{
+ const r=build();
+ try{await navigator.clipboard.writeText(r); $('copyBtn').textContent='✅ U kopjua'; setTimeout(()=>$('copyBtn').textContent='📋 Kopjo',1500)}
+ catch{alert('Nuk u kopjua automatikisht. Zgjidhe tekstin dhe kopjoje.')}
+};
+$('waBtn').onclick=()=>{const r=build(); location.href='https://wa.me/?text='+encodeURIComponent(r)};
+</script>
+</body>
+</html>
