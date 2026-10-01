@@ -275,7 +275,7 @@ $('ocrBtn').onclick=async()=>{
  let worker=null;
  try{
    // One worker is reused for all crops; this is faster and uses less memory.
-   worker=await Tesseract.createWorker('eng',{
+   worker=await Tesseract.createWorker('eng', 1, {
      logger:m=>{
        if(m.status==='recognizing text'){
          $('status').textContent='⏳ OCR '+Math.round((m.progress||0)*100)+'%';
@@ -303,11 +303,11 @@ $('ocrBtn').onclick=async()=>{
    for(const [k,v] of Object.entries(p)){
      if(v) $(k).value=v;
    }
+   if(p.date) $('date').value=p.date;
    build();
 
    const required=['b95','b98','diesel','market','total'];
    const found=required.filter(k=>$(k).value.trim()).length;
-   if(p.date) $('date').value=p.date;
 
    if(found===5){
      $('status').textContent='✅ U lexuan 5/5 të dhënat. Kontrolloji shifrat para WhatsApp-it.';
