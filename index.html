@@ -67,7 +67,12 @@ hr{border:0;border-top:1px solid #293b50;margin:14px 0}
 </div>
 
 <script>
-const $=id=>document.getElementById(id);\nconst photoInput=$("photo"), cameraInput=$("camera");\n$("galleryBtn").onclick=()=>photoInput.click();\n$("cameraBtn").onclick=()=>cameraInput.click();\nfunction selectFile(f){ if(!f)return; const dt=new DataTransfer(); dt.items.add(f); photoInput.files=dt.files; photoInput.dispatchEvent(new Event("change")); }\ncameraInput.addEventListener("change",()=>selectFile(cameraInput.files[0]));
+const $=id=>document.getElementById(id);
+const photoInput=$("photo"), cameraInput=$("camera");
+$("galleryBtn").onclick=()=>photoInput.click();
+$("cameraBtn").onclick=()=>cameraInput.click();
+function selectFile(f){ if(!f)return; const dt=new DataTransfer(); dt.items.add(f); photoInput.files=dt.files; photoInput.dispatchEvent(new Event("change")); }
+cameraInput.addEventListener("change",()=>selectFile(cameraInput.files[0]));
 const fields=['b95','b98','diesel','market','total','date','time'];
 function nowDefaults(){
   const d=new Date(), pad=n=>String(n).padStart(2,'0');
