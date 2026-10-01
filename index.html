@@ -116,7 +116,7 @@ function parseOCR(raw){
  const lines=raw.split(/\n+/).map(normText).filter(Boolean);
  let out={b95:'',b98:'',diesel:'',market:'',total:''};
 
- const sections=[[/KARBURANT.*H[O0]?1/,'b95'],[/KARBURANT.*H[O0]?2/,'b98'],[/KARBURANT.*H[O0]?3/,'diesel']];
+ const sections=[[/KARBURANT.*(?:#|H|H\s*)[O0]?1|KARBURANT.*1\b/,'b95'],[/KARBURANT.*(?:#|H|H\s*)[O0]?2|KARBURANT.*2\b/,'b98'],[/KARBURANT.*(?:#|H|H\s*)[O0]?3|KARBURANT.*3\b/,'diesel']];
  for(const [re,id] of sections){
    const i=lines.findIndex(x=>re.test(x));
    if(i>=0){
@@ -148,13 +148,26 @@ function parseOCR(raw){
    }
  }
  for(let i=0;i<lines.length;i++){
-   if(/T[O0]TAL\s+N[EE]T[O0]|GJENDJA\s+NE\s+ARKE|GJENDJA/.test(lines[i])){
-     for(let j=i;j<Math.min(i+4,lines.length);j++){
-       const v=money(lines[j]).find(x=>parseFloat(x)>=1000&&parseFloat(x)<10000);
-       if(v){out.total=v;break;}
+   if(/PARA\s+TE\s+GATSHME|PARA\s+T[EE]\s+GATSHME/.test(lines[i])){
+     const vals=money(lines[i]);
+     if(vals.length) out.total=vals[vals.length-1];
+     else if(i+1<lines.length){
+       const vals2=money(lines[i+1]);
+       if(vals2.length) out.total=vals2[0];
      }
    }
    if(out.total)break;
+ }
+ if(!out.total){
+   for(let i=0;i<lines.length;i++){
+     if(/T[O0]TAL\s+N[EE]T[O0]|GJENDJA\s+NE\s+ARKE|GJENDJA/.test(lines[i])){
+       for(let j=i;j<Math.min(i+4,lines.length);j++){
+         const v=money(lines[j]).find(x=>parseFloat(x)>=1000&&parseFloat(x)<10000);
+         if(v){out.total=v;break;}
+       }
+     }
+     if(out.total)break;
+   }
  }
  return out;
 }
