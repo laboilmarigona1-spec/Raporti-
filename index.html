@@ -141,12 +141,20 @@ function parseOCR(raw){
  if(liters.length>=3){
    out.b95=out.b95||liters[0]; out.b98=out.b98||liters[1]; out.diesel=out.diesel||liters[2];
  }
+ // Marketi: merret nga kuponi i dytë/fiskal, jo nga X-raporti kryesor.
+ // Prandaj kërkojmë TOTAL BRUTO me vlerë tipike të marketit (nën 1000€)
+ // dhe jo totalin e madh të karburanteve.
+ const marketCandidates=[];
  for(let i=0;i<lines.length;i++){
    if(/T[O0]TAL\s+BRUT[O0]|BRUT[O0]/.test(lines[i])){
-     const v=money(lines[i]); if(v.length) out.market=v[v.length-1];
-     else if(i+1<lines.length){const n=money(lines[i+1]);if(n.length)out.market=n[0];}
+     const vals=[...money(lines[i]), ...(i+1<lines.length?money(lines[i+1]):[])];
+     for(const v of vals){
+       const n=parseFloat(v);
+       if(n>0 && n<1000) marketCandidates.push(v);
+     }
    }
  }
+ if(marketCandidates.length) out.market=marketCandidates[marketCandidates.length-1];
  for(let i=0;i<lines.length;i++){
    if(/PARA\s+TE\s+GATSHME|PARA\s+T[EE]\s+GATSHME/.test(lines[i])){
      const vals=money(lines[i]);
