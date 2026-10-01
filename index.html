@@ -107,152 +107,106 @@ $('photo').addEventListener('change',()=>{
  $('status').style.display='block'; $('status').textContent='Fotoja u zgjodh. Shtyp “Lexo X-raportin”.';
 });
 
-function clean(s){
- return s
-   .replace(/[Oo]/g,'0')
-   .replace(/[Il|]/g,'1')
-   .replace(/[,]/g,'.')
-   .replace(/[’']/g,'')
-   .replace(/\u00a0/g,' ')
-   .replace(/\s+/g,' ');
+function normText(s){
+ return s.toUpperCase().replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim();
 }
-function normLine(s){
- return clean(s).toUpperCase()
-   .replace(/H0I/g,'H01').replace(/HO1/g,'H01').replace(/H02/g,'H02')
-   .replace(/HO2/g,'H02').replace(/H03/g,'H03').replace(/HO3/g,'H03');
-}
-function firstDecimal(s){
- const m=s.match(/\b\d{1,5}[.]\d{2,3}\b/);
- return m?m[0]:'';
-}
-function firstMoney(s){
- const m=s.match(/\b\d{2,5}[.]\d{2}\b/);
- return m?m[0]:'';
-}
+function nums(s){ return [...s.matchAll(/\b\d{1,5}\.\d{2,3}\b/g)].map(m=>m[0]); }
+function money(s){ return [...s.matchAll(/\b\d{2,5}\.\d{2}\b/g)].map(m=>m[0]); }
 function parseOCR(raw){
- const lines=raw.split(/\n+/).map(x=>normLine(x).trim()).filter(Boolean);
+ const lines=raw.split(/\n+/).map(normText).filter(Boolean);
  let out={b95:'',b98:'',diesel:'',market:'',total:''};
 
- // On LAB-OIL X reports the three fuel sections are H01, H02 and H03.
- for(let i=0;i<lines.length;i++){
-   const line=lines[i];
-   for(const [tag,id] of [['H01','b95'],['H02','b98'],['H03','diesel']]){
-     if(!out[id] && line.includes(tag)){
-       for(let j=i;j<Math.min(i+4,lines.length);j++){
-         const v=firstDecimal(lines[j].replace(/\b\d{1,3}[.]\d{2}\b/g,' '));
-         if(v && parseFloat(v)>1){ out[id]=v; break; }
+ const sections=[[/KARBURANT.*H[O0]?1/,'b95'],[/KARBURANT.*H[O0]?2/,'b98'],[/KARBURANT.*H[O0]?3/,'diesel']];
+ for(const [re,id] of sections){
+   const i=lines.findIndex(x=>re.test(x));
+   if(i>=0){
+     for(let j=i;j<Math.min(i+8,lines.length);j++){
+       for(const v of nums(lines[j])){
+         const n=parseFloat(v);
+         if(n>10&&n<3000){out[id]=v;break;}
        }
+       if(out[id])break;
      }
    }
  }
-
- // More tolerant fallback: locate LITRA lines and take the following number.
- const fuelVals=[];
+ const liters=[];
  for(let i=0;i<lines.length;i++){
-   if(lines[i].includes('LITRA')){
-     for(let j=i;j<Math.min(i+2,lines.length);j++){
-       const v=firstDecimal(lines[j].replace(/LITRA/g,''));
-       if(v && parseFloat(v)>1){ fuelVals.push(v); break; }
-     }
-   }
- }
- if(fuelVals.length>=3){
-   out.b95=out.b95||fuelVals[0];
-   out.b98=out.b98||fuelVals[1];
-   out.diesel=out.diesel||fuelVals[2];
- }
-
- // Market: the small fiscal receipt contains TOTAL BRUTO, usually the last occurrence.
- const gross=[];
- for(let i=0;i<lines.length;i++){
-   if(lines[i].includes('TOTAL BRUTO')){
-     const v=firstMoney(lines[i].replace('TOTAL BRUTO',''));
-     if(v) gross.push(v);
-     else if(lines[i+1]){const n=firstMoney(lines[i+1]); if(n) gross.push(n);}
-   }
- }
- if(gross.length) out.market=gross[gross.length-1];
-
- // Total: prefer TOTAL NETO from the fuel-sales report. Values around 3000–5000€.
- const totals=[];
- for(let i=0;i<lines.length;i++){
-   if(lines[i].includes('TOTAL NETO') || lines[i].includes('GJENDJA NE ARKE')){
+   if(/L[1I]TRA|LITRA/.test(lines[i])){
      for(let j=i;j<Math.min(i+3,lines.length);j++){
-       const v=firstMoney(lines[j].replace(/TOTAL NETO|GJENDJA NE ARKE/g,''));
-       if(v){ const n=parseFloat(v); if(n>=1000 && n<10000) totals.push(v); }
+       const v=nums(lines[j]).find(x=>parseFloat(x)>10&&parseFloat(x)<3000);
+       if(v){liters.push(v);break;}
      }
    }
  }
- if(totals.length) out.total=totals[0];
-
- // Final fallback for total: look for common exact range near KUPONA FISKAL.
- if(!out.total){
-   for(let i=0;i<lines.length;i++){
-     if(lines[i].includes('KUPONA FISKAL')){
-       for(let j=i;j<Math.min(i+4,lines.length);j++){
-         const v=firstMoney(lines[j].replace('KUPONA FISKAL',''));
-         if(v && parseFloat(v)>1000 && parseFloat(v)<10000){out.total=v;break;}
-       }
-     }
-     if(out.total) break;
+ if(liters.length>=3){
+   out.b95=out.b95||liters[0]; out.b98=out.b98||liters[1]; out.diesel=out.diesel||liters[2];
+ }
+ for(let i=0;i<lines.length;i++){
+   if(/T[O0]TAL\s+BRUT[O0]|BRUT[O0]/.test(lines[i])){
+     const v=money(lines[i]); if(v.length) out.market=v[v.length-1];
+     else if(i+1<lines.length){const n=money(lines[i+1]);if(n.length)out.market=n[0];}
    }
+ }
+ for(let i=0;i<lines.length;i++){
+   if(/T[O0]TAL\s+N[EE]T[O0]|GJENDJA\s+NE\s+ARKE|GJENDJA/.test(lines[i])){
+     for(let j=i;j<Math.min(i+4,lines.length);j++){
+       const v=money(lines[j]).find(x=>parseFloat(x)>=1000&&parseFloat(x)<10000);
+       if(v){out.total=v;break;}
+     }
+   }
+   if(out.total)break;
  }
  return out;
 }
-async function preprocess(file, mode){
+async function preprocess(file, mode, crop){
  return new Promise((resolve,reject)=>{
    const img=new Image();
    img.onload=()=>{
-     const scale=mode===0?2.2:2.8;
+     const scale=mode===0?2.5:3.2;
+     const sx=crop==='right'?img.naturalWidth/2:0;
+     const sw=crop==='full'?img.naturalWidth:img.naturalWidth/2;
      const c=document.createElement('canvas');
-     c.width=Math.round(img.naturalWidth*scale);
-     c.height=Math.round(img.naturalHeight*scale);
+     c.width=Math.round(sw*scale); c.height=Math.round(img.naturalHeight*scale);
      const ctx=c.getContext('2d',{willReadFrequently:true});
-     ctx.drawImage(img,0,0,c.width,c.height);
+     ctx.drawImage(img,sx,0,sw,img.naturalHeight,0,0,c.width,c.height);
      if(mode===1){
        const d=ctx.getImageData(0,0,c.width,c.height);
        for(let i=0;i<d.data.length;i+=4){
-         const g=0.299*d.data[i]+0.587*d.data[i+1]+0.114*d.data[i+2];
-         const v=g>175?255:(g<115?0:g);
+         const g=.299*d.data[i]+.587*d.data[i+1]+.114*d.data[i+2];
+         const v=g>180?255:g<135?0:g;
          d.data[i]=d.data[i+1]=d.data[i+2]=v;
        }
        ctx.putImageData(d,0,0);
      }
-     c.toBlob(b=>b?resolve(b):reject(new Error('preprocess')), 'image/png', 1);
+     c.toBlob(b=>b?resolve(b):reject(new Error('preprocess')),'image/png',1);
    };
-   img.onerror=reject;
-   img.src=URL.createObjectURL(file);
+   img.onerror=reject; img.src=URL.createObjectURL(file);
  });
 }
-
 $('ocrBtn').onclick=async()=>{
  const f=$('photo').files[0];
- if(!f){$('status').style.display='block';$('status').textContent='Së pari zgjidh foton që ta kanë dërguar, ose bëj një foto të re.';return}
- $('ocrBtn').disabled=true; $('status').style.display='block';
+ if(!f){$('status').style.display='block';$('status').textContent='Së pari zgjidh foton.';return}
+ $('ocrBtn').disabled=true;$('status').style.display='block';
  try{
    let combined='';
-   for(const mode of [0,1]){
-     $('status').textContent=mode===0?'⏳ Po përgatis dhe lexoj foton…':'⏳ Po bëj një lexim të dytë për të kontrolluar shifrat…';
-     const img=await preprocess(f,mode);
+   const jobs=[[0,'full'],[1,'full'],[1,'right']];
+   for(let k=0;k<jobs.length;k++){
+     const [mode,crop]=jobs[k];
+     $('status').textContent='⏳ Po lexoj fotografin…';
+     const img=await preprocess(f,mode,crop);
      const {data}=await Tesseract.recognize(img,'eng',{
-       logger:m=>{
-         if(m.status==='recognizing text') $('status').textContent='⏳ Po lexoj: '+Math.round((m.progress||0)*100)+'%';
-       },
-       tessedit_pageseg_mode: '6'
+       logger:m=>{if(m.status==='recognizing text')$('status').textContent='⏳ OCR '+Math.round((m.progress||0)*100)+'%';},
+       tessedit_pageseg_mode:crop==='full'?'11':'6'
      });
-     combined += '\n'+data.text;
+     combined+='\n'+data.text;
    }
    const p=parseOCR(combined);
-   Object.entries(p).forEach(([k,v])=>{if(v)$(k).value=v});
+   for(const [k,v] of Object.entries(p))if(v)$(k).value=v;
    build();
    const found=Object.values(p).filter(Boolean).length;
-   $('status').textContent=found>=4
-     ? '✅ U lexuan të dhënat. Kontrolloji një herë para dërgimit.'
-     : '⚠️ Fotoja u lexua pjesërisht. Kontrolloji fushat që mungojnë dhe plotësoji manualisht.';
- }catch(e){
-   console.error(e);
-   $('status').textContent='❌ Nuk u lexua dot fotografia. Provo një foto më të qartë.';
- }finally{$('ocrBtn').disabled=false}
+   $('status').textContent=found>=4?'✅ U lexuan të dhënat. Kontrolloji shifrat para dërgimit.':found>0?'⚠️ U lexuan vetëm disa të dhëna.':'⚠️ OCR nuk po i dallon numrat. Provo foton më afër dhe më të ndriçuar.';
+ }catch(e){console.error(e);$('status').textContent='❌ Gabim gjatë leximit. Provo përsëri.'}
+ finally{$('ocrBtn').disabled=false}
 };
 
 $('copyBtn').onclick=async()=>{
