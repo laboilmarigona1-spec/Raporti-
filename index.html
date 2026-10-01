@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b1220">
 <title>LAB OIL – Raporti Ditor</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js"></script>
 <style>
 :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#eef2f7;background:#08111c}
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#08111c,#101b2a);min-height:100vh}
@@ -36,7 +36,7 @@ hr{border:0;border-top:1px solid #293b50;margin:14px 0}
     <label>1. Ngarko ose fotografo X-raportin</label>
     <div class="row"><button type="button" id="galleryBtn" class="secondary">🖼️ Zgjidh nga galeria</button><button type="button" id="cameraBtn" class="secondary">📷 Bëj foto</button></div><input id="photo" type="file" accept=".jpg,.jpeg,.png,.webp" style="display:none"><input id="camera" type="file" accept=".jpg,.jpeg,.png,.webp" capture="environment" style="display:none">
     <img id="preview" class="preview">
-    <button id="ocrBtn" class="primary" style="margin-top:10px">🔍 Lexo X-raportin</button>
+    <button id="ocrBtn" class="primary" style="margin-top:10px">🔍 Lexo kuponat automatikisht</button>
     <div id="status" class="status"></div>
   </div>
 
@@ -62,7 +62,7 @@ hr{border:0;border-top:1px solid #293b50;margin:14px 0}
   </div>
 
   <div class="card small">
-    <b>Shënim:</b> OCR është ndihmës dhe mund të ngatërrojë ndonjë shifër. Kontrolloji numrat para se t'ia dërgosh shefit. Nëse fotoja nuk lexohet mirë, mund t'i shkruash manualisht në fushat sipër.
+    <b>Lexim i avancuar:</b> aplikacioni tani provon fotografinë në disa zona (kuponi kryesor + kuponi i dytë), e zmadhon dhe e rrotullon automatikisht. Numrat me 3 shifra pas presjes/pikës trajtohen si litra, ndërsa <b>TOTAL BRUTO</b> i kuponit të dytë si Marketi. Gjithsesi kontrolloji shifrat para dërgimit.
   </div>
 </div>
 
@@ -108,126 +108,221 @@ $('photo').addEventListener('change',()=>{
 });
 
 function normText(s){
- return s.toUpperCase().replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim();
+ return s.toUpperCase().replace(/\u00A0/g,' ').replace(/[|]/g,' ').replace(/\s+/g,' ').trim();
 }
-function nums(s){ return [...s.matchAll(/\b\d{1,5}\.\d{2,3}\b/g)].map(m=>m[0]); }
-function money(s){ return [...s.matchAll(/\b\d{2,5}\.\d{2}\b/g)].map(m=>m[0]); }
+function repairToken(s){
+ return String(s||'')
+   .replace(/,/g,'.')
+   .replace(/[OoQq]/g,'0')
+   .replace(/[IiLl]/g,'1');
+}
+function decimalTokens(s){
+ const out=[];
+ const re=/\b\d{1,5}[.,]\d{2,3}\b/g;
+ for(const m of String(s||'').matchAll(re)){
+   const v=repairToken(m[0]);
+   const n=parseFloat(v);
+   if(Number.isFinite(n)) out.push(v);
+ }
+ return out;
+}
+function litersTokens(s){
+ return decimalTokens(s).filter(v=>{
+   const parts=v.split('.');
+   return parts[1]&&parts[1].length===3&&parseFloat(v)>10&&parseFloat(v)<3000;
+ });
+}
+function moneyTokens(s){
+ return decimalTokens(s).filter(v=>{
+   const parts=v.split('.');
+   return parts[1]&&parts[1].length===2;
+ });
+}
+function unique(arr){return [...new Set(arr)];}
+
 function parseOCR(raw){
  const lines=raw.split(/\n+/).map(normText).filter(Boolean);
- let out={b95:'',b98:'',diesel:'',market:'',total:''};
+ const out={b95:'',b98:'',diesel:'',market:'',total:'',date:''};
 
- const sections=[[/KARBURANT.*(?:#|H|H\s*)[O0]?1|KARBURANT.*1\b/,'b95'],[/KARBURANT.*(?:#|H|H\s*)[O0]?2|KARBURANT.*2\b/,'b98'],[/KARBURANT.*(?:#|H|H\s*)[O0]?3|KARBURANT.*3\b/,'diesel']];
- for(const [re,id] of sections){
-   const i=lines.findIndex(x=>re.test(x));
-   if(i>=0){
-     for(let j=i;j<Math.min(i+8,lines.length);j++){
-       for(const v of nums(lines[j])){
-         const n=parseFloat(v);
-         if(n>10&&n<3000){out[id]=v;break;}
-       }
-       if(out[id])break;
+ // 1) Data from the receipt itself.
+ const dm=raw.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);
+ if(dm){
+   const dd=dm[1].padStart(2,'0'), mm=dm[2].padStart(2,'0'), yy=dm[3];
+   out.date=yy+'-'+mm+'-'+dd;
+ }
+
+ // 2) Fuel liters: first use H01/H02/H03 rows, then use the
+ //    three-decimal-number pattern. This avoids confusing € values with liters.
+ const fuelMap=[['b95',/\bH?0?1\b|KARBURANT\s*#?\s*1\b/],
+                ['b98',/\bH?0?2\b|KARBURANT\s*#?\s*2\b/],
+                ['diesel',/\bH?0?3\b|KARBURANT\s*#?\s*3\b/]];
+ for(const [id,re] of fuelMap){
+   const idx=lines.findIndex(x=>re.test(x));
+   if(idx>=0){
+     for(let j=idx;j<Math.min(idx+4,lines.length);j++){
+       const vals=litersTokens(lines[j]);
+       if(vals.length){out[id]=vals[0];break;}
      }
    }
  }
- const liters=[];
+
+ // If labels were missed, collect all plausible 3-decimal fuel readings.
+ if(!(out.b95&&out.b98&&out.diesel)){
+   const all=unique(lines.flatMap(litersTokens));
+   const plausible=all.filter(v=>parseFloat(v)>10&&parseFloat(v)<3000);
+   if(plausible.length>=3){
+     out.b95=out.b95||plausible[0];
+     out.b98=out.b98||plausible[1];
+     out.diesel=out.diesel||plausible[2];
+   }
+ }
+
+ // 3) Total: "PARA TE GATSHME" is the primary rule.
  for(let i=0;i<lines.length;i++){
-   if(/L[1I]TRA|LITRA/.test(lines[i])){
-     for(let j=i;j<Math.min(i+3,lines.length);j++){
-       const v=nums(lines[j]).find(x=>parseFloat(x)>10&&parseFloat(x)<3000);
-       if(v){liters.push(v);break;}
-     }
+   if(/PARA\s+TE?\s+GATSHME|PARA\s+T[EE]\s+GATSHME/.test(lines[i])){
+     const near=moneyTokens(lines[i]).filter(v=>parseFloat(v)>=1000&&parseFloat(v)<10000);
+     const next=i+1<lines.length?moneyTokens(lines[i+1]).filter(v=>parseFloat(v)>=1000&&parseFloat(v)<10000):[];
+     if(near.length) out.total=near[near.length-1];
+     else if(next.length) out.total=next[0];
    }
+   if(out.total) break;
  }
- if(liters.length>=3){
-   out.b95=out.b95||liters[0]; out.b98=out.b98||liters[1]; out.diesel=out.diesel||liters[2];
- }
- // Marketi: merret nga kuponi i dytë/fiskal, jo nga X-raporti kryesor.
- // Prandaj kërkojmë TOTAL BRUTO me vlerë tipike të marketit (nën 1000€)
- // dhe jo totalin e madh të karburanteve.
- const marketCandidates=[];
- for(let i=0;i<lines.length;i++){
-   if(/T[O0]TAL\s+BRUT[O0]|BRUT[O0]/.test(lines[i])){
-     const vals=[...money(lines[i]), ...(i+1<lines.length?money(lines[i+1]):[])];
-     for(const v of vals){
-       const n=parseFloat(v);
-       if(n>0 && n<1000) marketCandidates.push(v);
-     }
-   }
- }
- if(marketCandidates.length) out.market=marketCandidates[0];
- for(let i=0;i<lines.length;i++){
-   if(/PARA\s+TE\s+GATSHME|PARA\s+T[EE]\s+GATSHME/.test(lines[i])){
-     const vals=money(lines[i]);
-     if(vals.length) out.total=vals[vals.length-1];
-     else if(i+1<lines.length){
-       const vals2=money(lines[i+1]);
-       if(vals2.length) out.total=vals2[0];
-     }
-   }
-   if(out.total)break;
- }
+ // Fallback for TOTAL NET / GJENDJA NE ARKE.
  if(!out.total){
    for(let i=0;i<lines.length;i++){
-     if(/T[O0]TAL\s+N[EE]T[O0]|GJENDJA\s+NE\s+ARKE|GJENDJA/.test(lines[i])){
-       for(let j=i;j<Math.min(i+4,lines.length);j++){
-         const v=money(lines[j]).find(x=>parseFloat(x)>=1000&&parseFloat(x)<10000);
-         if(v){out.total=v;break;}
-       }
+     if(/TOTAL\s*(NET|NETO|N[EE]T)|GJENDJA/.test(lines[i])){
+       const vals=[];
+       for(let j=i;j<Math.min(i+3,lines.length);j++)
+         vals.push(...moneyTokens(lines[j]).filter(v=>parseFloat(v)>=1000&&parseFloat(v)<10000));
+       if(vals.length){out.total=vals[0];break;}
      }
-     if(out.total)break;
    }
  }
+
+ // 4) Market: it must come from the SECOND coupon, identified by TOTAL BRUTO.
+ //    Fuel report gross totals are normally >1000, so we reject those.
+ for(let i=0;i<lines.length;i++){
+   if(/TOTAL\s+BRUT|BRUT[O0]/.test(lines[i])){
+     const vals=[];
+     for(let j=i;j<Math.min(i+3,lines.length);j++)
+       vals.push(...moneyTokens(lines[j]).filter(v=>parseFloat(v)>0&&parseFloat(v)<1000));
+     if(vals.length){out.market=vals[0];break;}
+   }
+ }
+ // If OCR lost the word BRUTO, look for a small TOTAL on the right-hand receipt.
+ if(!out.market){
+   for(let i=0;i<lines.length;i++){
+     if(/\bTOTAL\b/.test(lines[i])){
+       const vals=[];
+       for(let j=i;j<Math.min(i+3,lines.length);j++)
+         vals.push(...moneyTokens(lines[j]).filter(v=>parseFloat(v)>=200&&parseFloat(v)<1000));
+       if(vals.length){out.market=vals[0];break;}
+     }
+   }
+ }
+
  return out;
 }
 async function preprocess(file, mode, crop){
  return new Promise((resolve,reject)=>{
    const img=new Image();
+   const url=URL.createObjectURL(file);
    img.onload=()=>{
-     const scale=mode===0?2.5:3.2;
-     const sx=crop==='right'?img.naturalWidth/2:0;
-     const sw=crop==='full'?img.naturalWidth:img.naturalWidth/2;
-     const c=document.createElement('canvas');
-     c.width=Math.round(sw*scale); c.height=Math.round(img.naturalHeight*scale);
-     const ctx=c.getContext('2d',{willReadFrequently:true});
-     ctx.drawImage(img,sx,0,sw,img.naturalHeight,0,0,c.width,c.height);
-     if(mode===1){
-       const d=ctx.getImageData(0,0,c.width,c.height);
-       for(let i=0;i<d.data.length;i+=4){
-         const g=.299*d.data[i]+.587*d.data[i+1]+.114*d.data[i+2];
-         const v=g>180?255:g<135?0:g;
-         d.data[i]=d.data[i+1]=d.data[i+2]=v;
+     try{
+       const W=img.naturalWidth,H=img.naturalHeight;
+       let sx=0, sy=0, sw=W, sh=H;
+       if(crop==='left'){sw=Math.round(W*.64);}
+       if(crop==='right'){sx=Math.round(W*.36);sw=W-sx;}
+       if(crop==='top'){sh=Math.round(H*.68);}
+       if(crop==='bottom'){sy=Math.round(H*.32);sh=H-sy;}
+       const scale=mode===0?2.6:3.4;
+       const c=document.createElement('canvas');
+       c.width=Math.min(Math.round(sw*scale),4200);
+       c.height=Math.min(Math.round(sh*scale),5200);
+       const ctx=c.getContext('2d',{willReadFrequently:true});
+       ctx.imageSmoothingEnabled=true;
+       ctx.drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);
+
+       if(mode===1){
+         const d=ctx.getImageData(0,0,c.width,c.height);
+         for(let i=0;i<d.data.length;i+=4){
+           const g=.299*d.data[i]+.587*d.data[i+1]+.114*d.data[i+2];
+           const v=g>195?255:g<145?0:Math.round(((g-145)/50)*255);
+           d.data[i]=d.data[i+1]=d.data[i+2]=v;
+         }
+         ctx.putImageData(d,0,0);
        }
-       ctx.putImageData(d,0,0);
-     }
-     c.toBlob(b=>b?resolve(b):reject(new Error('preprocess')),'image/png',1);
+       c.toBlob(b=>{
+         URL.revokeObjectURL(url);
+         b?resolve(b):reject(new Error('preprocess'));
+       },'image/jpeg',.94);
+     }catch(e){URL.revokeObjectURL(url);reject(e);}
    };
-   img.onerror=reject; img.src=URL.createObjectURL(file);
+   img.onerror=e=>{URL.revokeObjectURL(url);reject(e);};
+   img.src=url;
  });
 }
+
 $('ocrBtn').onclick=async()=>{
  const f=$('photo').files[0];
- if(!f){$('status').style.display='block';$('status').textContent='Së pari zgjidh foton.';return}
- $('ocrBtn').disabled=true;$('status').style.display='block';
+ if(!f){
+   $('status').style.display='block';
+   $('status').textContent='Së pari zgjidh foton.';
+   return;
+ }
+ $('ocrBtn').disabled=true;
+ $('status').style.display='block';
+ let worker=null;
  try{
+   // One worker is reused for all crops; this is faster and uses less memory.
+   worker=await Tesseract.createWorker('eng',{
+     logger:m=>{
+       if(m.status==='recognizing text'){
+         $('status').textContent='⏳ OCR '+Math.round((m.progress||0)*100)+'%';
+       }else if(m.status==='loading language model'){
+         $('status').textContent='⏳ Po përgatitet leximi…';
+       }
+     }
+   });
+
+   const jobs=[
+     [0,'full'],
+     [1,'full'],
+     [1,'left'],
+     [1,'right']
+   ];
    let combined='';
-   const jobs=[[0,'full'],[1,'full'],[1,'right']];
-   for(let k=0;k<jobs.length;k++){
-     const [mode,crop]=jobs[k];
-     $('status').textContent='⏳ Po lexoj fotografin…';
+   for(const [mode,crop] of jobs){
+     $('status').textContent='⏳ Po lexoj kuponat…';
      const img=await preprocess(f,mode,crop);
-     const {data}=await Tesseract.recognize(img,'eng',{
-       logger:m=>{if(m.status==='recognizing text')$('status').textContent='⏳ OCR '+Math.round((m.progress||0)*100)+'%';},
-       tessedit_pageseg_mode:crop==='full'?'11':'6'
-     });
-     combined+='\n'+data.text;
+     const result=await worker.recognize(img,{rotateAuto:true});
+     combined+='\n'+(result.data.text||'');
    }
+
    const p=parseOCR(combined);
-   for(const [k,v] of Object.entries(p))if(v)$(k).value=v;
+   for(const [k,v] of Object.entries(p)){
+     if(v) $(k).value=v;
+   }
    build();
-   const found=Object.values(p).filter(Boolean).length;
-   $('status').textContent=found>=4?'✅ U lexuan të dhënat. Kontrolloji shifrat para dërgimit.':found>0?'⚠️ U lexuan vetëm disa të dhëna.':'⚠️ OCR nuk po i dallon numrat. Provo foton më afër dhe më të ndriçuar.';
- }catch(e){console.error(e);$('status').textContent='❌ Gabim gjatë leximit. Provo përsëri.'}
- finally{$('ocrBtn').disabled=false}
+
+   const required=['b95','b98','diesel','market','total'];
+   const found=required.filter(k=>$(k).value.trim()).length;
+   if(p.date) $('date').value=p.date;
+
+   if(found===5){
+     $('status').textContent='✅ U lexuan 5/5 të dhënat. Kontrolloji shifrat para WhatsApp-it.';
+   }else if(found>=3){
+     $('status').textContent='⚠️ U lexuan '+found+'/5. Plotëso vetëm fushat që mungojnë.';
+   }else{
+     $('status').textContent='⚠️ Fotoja është e vështirë për OCR. Bëje foton më afër, drejt dhe me dritë mbi kuponë.';
+   }
+ }catch(e){
+   console.error(e);
+   $('status').textContent='❌ Gabim gjatë leximit. Rifresko faqen dhe provo përsëri.';
+ }finally{
+   if(worker) try{await worker.terminate();}catch{}
+   $('ocrBtn').disabled=false;
+ }
 };
 
 $('copyBtn').onclick=async()=>{
