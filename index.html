@@ -154,7 +154,7 @@ function parseOCR(raw){
      }
    }
  }
- if(marketCandidates.length) out.market=marketCandidates[marketCandidates.length-1];
+ if(marketCandidates.length) out.market=marketCandidates[0];
  for(let i=0;i<lines.length;i++){
    if(/PARA\s+TE\s+GATSHME|PARA\s+T[EE]\s+GATSHME/.test(lines[i])){
      const vals=money(lines[i]);
